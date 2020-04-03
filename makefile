@@ -23,7 +23,9 @@ CRTLIB=$(TLIB)\cs.lib
 
 cpuid.exe:
       tcc -c -mt $(TCDEBUG) main.cpp
-      tlink $(LINKDEBUG) main.obj $(RUNTIME), himem.exe, himem.map, $(CRTLIB)
+      tcc -c -mt $(TCDEBUG) cpuid.cpp
+      tcc -c -mt $(TCDEBUG) xmsapi.cpp
+      tlink $(LINKDEBUG) main.obj cpuid.obj xmsapi.obj $(RUNTIME), himem.exe, himem.map, $(CRTLIB)
 
 clean:
         del *.obj
