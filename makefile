@@ -25,7 +25,9 @@ cpuid.exe:
       tcc -c -mt $(TCDEBUG) main.cpp
       tcc -c -mt $(TCDEBUG) cpuid.cpp
       tcc -c -mt $(TCDEBUG) xmsapi.cpp
-      tlink $(LINKDEBUG) main.obj cpuid.obj xmsapi.obj $(RUNTIME), himem.exe, himem.map, $(CRTLIB)
+      tcc -c -mt $(TCDEBUG) handler.cpp
+      tasm xmm386.asm
+      # tlink /3 $(LINKDEBUG) handler.obj main.obj cpuid.obj xmsapi.obj $(RUNTIME), himem.exe, himem.map, $(CRTLIB)
 
 clean:
         del *.obj

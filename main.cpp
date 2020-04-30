@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <dos.h>
 #include "cpuid.h"
-
-int isXMSReady();
+#include "xmsapi.h"
 
 int main()
 {
@@ -13,6 +12,8 @@ int main()
 
 	printf("CPU detect = %s\n", cpu[cpu_detect()]);
 
-	printf("XMS ready? %s\n", (isXMSReady() == 0) ? "Yes" : "No");
+	printf("XMS ready? %s\n", (XMSReady() == 0) ? "Yes" : "No");
 	return 0;
+
+	switch32();
 }

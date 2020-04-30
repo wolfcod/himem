@@ -3,7 +3,7 @@
 
 typedef void* HANDLE;
 
-extern int xms_errno;	// latest XMS error
+extern int xms_errno;   // latest XMS error
 
 /** XMSReady return XMS driver status => 0 ok. 1 error */
 int XMSReady();
@@ -40,7 +40,7 @@ int read_xms(void far *ptr, HANDLE hSrc, size_t size);
 
 /** lock a memory block => the return value is a physical address not
 accessible on real mode */
-void *lock_xms(HANDLE hHandle);
+void far *lock_xms(HANDLE hHandle);
 
 /** unlock a memory block */
 int unlock_xms(HANDLE hHandle);
@@ -55,5 +55,9 @@ void far *malloc_umb(size_t size);
 
 /** release an upper segment of memory.. */
 int free_umb(void far *ptr);
+
+
+// declared in xmm386.asm
+extern "C" void switch32();
 #endif
 
