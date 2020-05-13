@@ -13,7 +13,9 @@ int main()
 	printf("CPU detect = %s\n", cpu[cpu_detect()]);
 
 	printf("XMS ready? %s\n", (XMSReady() == 0) ? "Yes" : "No");
-	return 0;
-
 	switch32();
+
+	printf("Switch complete. Return back in DOS mode.\n");
+
+	return 0;
 }

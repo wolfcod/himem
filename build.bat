@@ -41,7 +41,8 @@ goto end
 
 :linkdrv
 echo Linking driver version...
-tlink /t /3 driver.obj xmm386.obj handler.obj, himem.sys, himem.map
+rem Strip data from handler...
+tlink /t /3 driver.obj xmm386.obj handler.obj, himem.sys, himem.map, c:\tc\lib\cs.lib
 if exist himem.sys goto clean
 goto end
 

@@ -5,6 +5,39 @@
 .code
 
 PUBLIC C SWITCH32
+PUBLIC C XMSCONTROL
+EXTRN XMM_DISPATCH
+
+XMSCONTROL PROC
+        push cx
+        push si
+        push di
+        push ds
+        push es
+        pushf
+
+        push ds         ; arguments...
+        pop  es
+
+        push cs         ; cs:ds used by C code
+        pop  ds
+
+        push es
+        push si
+        push dx
+        push ax         ; 
+        call XMM_DISPATCH
+
+exit:
+        popf
+        pop es
+        pop ds
+        pop di
+        pop si
+        pop cx
+        retf
+XMSCONTROL ENDP
+
 
 SWITCH32 PROC
         mov ax, ss
@@ -52,6 +85,7 @@ enter_pmode:
         mov cr0, eax
         
 ; JMP FAR 08:PMODE_BLOCK => switch into 32bit mode!
+        db 66h
         db 0eah
 pmode_patch:
         dd offset pmode_block
@@ -95,11 +129,8 @@ real_mode:
         
         mov ds, ax
         mov es, ax
-        lea dx, HelloBack
-
-exit:
-        mov ax, 4c00h
-        int 21h
+        mov ax, 0deadh
+        ret
 
 switch_32bit:
         jmp real_mode

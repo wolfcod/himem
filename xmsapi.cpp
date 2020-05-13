@@ -49,96 +49,99 @@ int XMSReady()
 	return 1;
 }
 
-/** query xms version or return -1 */
-int xms_version()
+/** XMM Version
+ *	ARGS: None
+ *	RETS: AX = XMS Version
+ *		  BX = Internal Driver Version Number
+ *		  DX = 1 if HMA exists, 0 if it doesn't
+ */
+void XMM_Version(REGS *regs)
 {
-	if (xms_control == NULL)
-		return -1;
+	regs->x.ax = XMS_VERSION;
+	regs->x.bx = HIMEM_VERSION;
 
-	_AH = 0x00;
-	return xms_control();
+	return;
 }
 
-/** allocate deallocate memory from HMA */
-void far *malloc_hma(size_t size)
+static char fHMAInUse = 0;
+static char fHMAExists = 0;
+static size_t minHMASize = 0;
+
+/** XMM RequestHMA
+ * ARGS: bytes (DX)
+ * RETS: error or 0 */
+int XMM_RequestHMA(REGS *regs, size_t bytes)
 {
-	return NULL;
+	if (fHMAInUse == 1)
+		return ERR_HMAINUSE;
+
+	if (fHMAExists == 0)
+		return ERR_HMANOEXIST;
+
+	if (MinHMASize < bytes)
+		return ERR_HMAMINSIZE;
+
+	fHMAInUse = 1;
+	regs->x.ax = 1;
+	return ERR_NOERROR;
 }
 
-int free_hma(void far *ptr)
+int XMM_ReleaseHMA(REGS *regs)
 {
-	return 0;
+	if (fHMAInUse == 0)
+		return ERR_HMANOTALLOCED;
+
+	regs->x.ax = 1;
+	fHMAInUse = 0;
+	return ERR_NOERROR;
 }
 
-/** enable/disable a20 */
-int enable_a20()
+static char fCanChangeA20 = 0;
+static int EnableCount = 0;
+
+int (*a20Handler)(int enable);
+
+int XMM_LocalEnableA20(REGS *regs)
 {
-	_AH = 0x03;
-	return xms_control();
+	return ERR_A20;
 }
 
-int disable_a20()
+int XMM_LocalDisableA20(REGS *regs)
 {
-	_AH = 0x04;
-	return xms_control();
+	return ERR_A20;
 }
 
-/** enable/disable a20 for direct access from software */
-int l_enable_a20()
+static char fGlobalEnable = 0;
+int XMM_GlobalEnableA20(REGS *regs)
 {
-	_AH = 0x05;
-	return xms_control();
-}
+	if (fGlobalEnable == 0) {
+		int r = XMM_LocalEnableA20(regs);
 
-int l_disable_a20()
-{
-	_AH = 0x06;
-	return xms_control();
-}
-
-/** return a20 bit status */
-int query_a20()
-{
-	_AH = 0x07;
-	return xms_control();
-}
-
-/** allocate a block of bytes... size_t is in bytes! */
-HANDLE malloc_xms(size_t size)
-{
-	return hugealloc_xms(size_in_kb(size));
-}
-
-HANDLE hugealloc_xms(size_t kbSize)
-{
-	HANDLE hHandle = (HANDLE) 0;
-	_AH = 0x09;
-	_DX = kbSize;
-	int r = xms_control();
-	if (r == 0) {
-		xms_errno = _BL;
-	} else {
-		hHandle = (HANDLE) _DX;
-		xms_errno = 0;
+		if (r == ERR_NOERROR) {
+			fGlobalEnable = 1;
+		} else {
+			return r;
+		}
 	}
 
-	return hHandle;
+	regs->x.ax = 1;
+	return ERR_NOERROR;
 }
 
-
-/** destroy an handle.. and free xms memory */
-int free_xms(HANDLE hHandle)
+int XMM_GlobalDisableA20(REGS *regs)
 {
-	_AH = 0x0a;
-	_DX = (unsigned int) hHandle;
-	int r = xms_control();
+	if (fGlobalEnable == 1) {
+		int r = XMM_LocalDisableA20(regs);
 
-	if (r == 0) {
-		xms_errno = _BL;
-		return 1;
+		if (r == ERR_NOERROR) {
+			fGlobalEnable = 0;
+		} else {
+			return r;
+		}
 	}
-	xms_errno = 0;
-	return 0;
+
+	regs->x.ax = 1;
+	return ERR_NOERROR;
 }
 
 union SegOff
@@ -159,179 +162,47 @@ struct ExtMemMove
 	union SegOff	DestOffset;
 };
 
-/** move size bytes from source to dest at specified offset */
-int memmove_xms(HANDLE hDst, HANDLE hSrc, size_t size, long offset)
+/** Entry point of XMM Control called by software */
+void XMM_DISPATCH(int Arg1, int Arg2, void far *arg)
 {
-	return 0;
-}
+	REGS regs;
+	memset(&regs, 0, sizeof(REGS));
 
-int write_xms(HANDLE hDst, void far *ptr, size_t size)
-{
-	struct ExtMemMove w;
+	int err = ERR_NOERROR;
+	int FunctionId = (Arg1 & 0xFF00) >> 8;
 
-	w.Length = (unsigned long) size;
-	w.SourceHandle = 0;	// 0 on this..
-	w.SourceOffset.addr.offset = FP_OFF(ptr);
-	w.SourceOffset.addr.segment = FP_SEG(ptr);
-	w.DestHandle = hDst;
-	w.DestOffset.address = 0;
-
-	// on tiny model.. DS is equal to SS .. so DS:SI can be initialized only
-	// on SI
-
-	_AH = 0x0b;
-	_SI = (unsigned int) &w;
-	int r = xms_control();
-	if (r == 0) {
-		xms_errno = _BL;
-		return 1;
+	switch(FunctionId) {
+		case 0:	/* Version */
+			XMM_Version(&regs);
+			break;
+		case 1: /* RequestHMA */
+			err = XMM_RequestHMA(&regs, Arg2);
+			break;
+		case 2:
+			err = XMM_ReleaseHMA(&regs);
+		case 3:
+		case 4:
+		case 5:
+		case 6:
+		case 7:
+		case 8:
+		case 9:
+		case 10:
+		case 11:
+		case 12:
+		case 13:
+		case 14:
+		case 15:
+		default:
+			err = ERR_NOTIMPLEMENTED;
+			break;
 	}
 
-	return 0;
-}
-
-int read_xms(void far *ptr, HANDLE hSrc, size_t size)
-{
-	struct ExtMemMove w;
-
-	w.Length = (unsigned long) size;
-	w.SourceHandle = hSrc;	// 0 on this..
-	w.SourceOffset.address = 0;
-	w.DestOffset.addr.offset = FP_OFF(ptr);
-	w.DestOffset.addr.segment = FP_SEG(ptr);
-	w.DestHandle = 0;
-
-	// on tiny model.. DS is equal to SS .. so DS:SI can be initialized only
-	// on SI
-
-	_AH = 0x0b;
-	_SI = (unsigned int) &w;
-	int r = xms_control();
-	if (r == 0) {
-		xms_errno = _BL;
-		return 1;
-	}
-
-	return 0;
-
-}
-
-/** lock a memory block => the return value is a physical address not
-accessible on real mode */
-void far *lock_xms(HANDLE hHandle)
-{
-	void far *addr = NULL;
-	_AH = 0x0c;
-	_DX = (int) hHandle;
-	int r = xms_control();
-	xms_errno = _BL;
-	unsigned off = _BX;
-	unsigned seg = _DX;
-
-	addr = MK_FP(seg, off);
-
-	if (r == 0)
-		return 0;
-
-	xms_errno = 0;
-	return addr;
-}
-
-/** unlock a memory block */
-int unlock_xms(HANDLE hHandle)
-{
-	_AH = 0x0d;
-	_DX = (int) hHandle;
-	int r = xms_control();
-
-	if (r != 1) {
-		xms_errno = _BL;
-		return 1;
-	}
-
-	xms_errno = 0;
-	return 0;
-}
-
-/** return information about an handle */
-size_t get_xms_info(HANDLE hHandle, int *pAvailableHandle)
-{
-	size_t size = 0;
-	int handles = 0;
-	int blockCount = 0;
-	_AH = 0x0e;
-	_DX = (int) hHandle;
-	int r = xms_control();
-
-	if (r != 1) {
-		xms_errno = _BL;
+	if (err == ERR_NOERROR) {
+		_AX = regs.x.ax;
+		_DX = regs.x.dx;
 	} else {
-		size = _DX;
-		handles = _BL;
-		blockCount = _BH;
+		_AX = regs.x.ax;
+		_BL = err;
 	}
-
-	if (pAvailableHandle != NULL)
-		*pAvailableHandle = handles;
-
-	return size;
-}
-
-int realloc_xms(HANDLE hHandle, size_t newsize)
-{
-	newsize = size_in_kb(newsize);
-
-	_AH = 0x0f;
-	_BX = newsize;
-	_DX = (int) hHandle;
-	int r = xms_control();
-	if (r != 1)
-		xms_errno = _BL;
-	else
-		xms_errno = 0;
-
-	return !(r == 1);
-}
-
-/** alloc an upper memory segment.. size will be aligned to 16 */
-void far *malloc_umb(size_t size)
-{
-	void far *r;
-	size = size_in_page(size);
-
-	asm {
-		mov dx, word ptr [size]		// retrieve only segment...
-		mov ax, 0x1000
-		call far ptr [xms_control]
-		mov word ptr [r], 0
-		mov word ptr [r+2], bx
-	}
-	if (_AX == 1) {
-		xms_errno = 0;
-		return r;
-	}
-	else {
-		xms_errno = _BL;
-	}
-
-	return 0;
-}
-
-/** release an upper segment of memory.. */
-int free_umb(void far *arg)
-{
-	int r;
-	asm {
-		mov dx, word ptr [arg+2]		// retrieve only segment...
-		mov ax, 0x1100
-		call far ptr [xms_control]
-	}
-	if (_AX == 0) {
-		xms_errno = _BL;
-		return 1;
-	}
-	else
-		xms_errno = 0;
-
-	return 0;
 }

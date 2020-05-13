@@ -8,56 +8,48 @@ extern int xms_errno;   // latest XMS error
 /** XMSReady return XMS driver status => 0 ok. 1 error */
 int XMSReady();
 
-/** xms_version() return XMS driver version .*/
-int xms_version();
-
-/** allocate deallocate memory from HMA */
-void far *malloc_hma(size_t size);
-int free_hma(void far *ptr);
-
-/** enable/disable a20 */
-int enable_a20();
-int disable_a20();
-
-/** enable/disable a20 for direct access from software */
-int l_enable_a20();
-int l_disable_a20();
-
-/** return a20 bit status */
-int query_a20();
-
-/** allocate a block of bytes... size_t is in bytes! */
-HANDLE malloc_xms(size_t size);
-HANDLE hugealloc_xms(size_t kbSize);
-
-/** destroy an handle.. and free xms memory */
-int free_xms(HANDLE hHandle);
-
-/** move size bytes from source to dest at specified offset */
-int memmove_xms(HANDLE hDst, HANDLE hSrc, size_t size, long offset = 0);
-int write_xms(HANDLE hDst, void far *ptr, size_t size);
-int read_xms(void far *ptr, HANDLE hSrc, size_t size);
-
-/** lock a memory block => the return value is a physical address not
-accessible on real mode */
-void far *lock_xms(HANDLE hHandle);
-
-/** unlock a memory block */
-int unlock_xms(HANDLE hHandle);
-
-/** return information about an handle */
-size_t get_xms_info(HANDLE hHandle, int *pAvailableHandle);
-
-int realloc_xms(HANDLE hHandle, size_t newsize);
-
-/** alloc an upper memory segment.. size will be aligned to 16 */
-void far *malloc_umb(size_t size);
-
-/** release an upper segment of memory.. */
-int free_umb(void far *ptr);
-
-
 // declared in xmm386.asm
 extern "C" void switch32();
+
+/** XMM_Control entry routine */
+void XMM_Control();
+
+typedef enum xms_error
+{
+	ERR_NOERROR = 0x00,
+	ERR_NOTIMPLEMENTED	= 0x80,
+	ERR_VDISKFOUND = 0x81,
+	ERR_A20 = 0x82,
+	ERR_GENERAL = 0x8e,
+	ERR_UNRECOVERABLE = 0x8f,
+
+	ERR_HMANOTEXIST = 0x90,
+	ERR_HMAINUSE = 0x91,
+	ERR_HMAMINSIZE = 0x92,
+	ERR_HMANOTALLOCED = 0x93,
+
+	ERR_OUTOFMEMORY = 0xa0,
+	ERR_OUTOFHANDLES = 0xa1,
+	ERR_INVALIDHANDLE = 0xa2,
+	ERR_SHINVALID = 0xa3,
+	ERR_SOINVALID = 0xa4,
+	ERR_DHINVALID = 0xa5,
+	ERR_DOINVALID = 0xa6,
+	ERR_LENINVALID = 0xa7,
+	ERR_OVERLAP = 0xa8,
+	ERR_PARITY = 0xa9,
+	ERR_EMBUNLOCKED = 0xaa,
+	ERR_EMBLOCKED = 0xab,
+	ERR_LOCKOVERFLOW = 0xac,
+	ERR_LOCKFAIL = 0xad,
+
+	ERR_UMBSIZETOOBIG = 0xb0,
+	ERR_NOUMBS = 0xb1,
+	ERR_INVALIDUMB = 0xb2
+};
+
+#define XMS_VERSION 0x0200
+#define HIMEM_VERSION 0x0203
+
 #endif
 
