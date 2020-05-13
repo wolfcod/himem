@@ -76,9 +76,9 @@ int XMM_RequestHMA(REGS *regs, size_t bytes)
 		return ERR_HMAINUSE;
 
 	if (fHMAExists == 0)
-		return ERR_HMANOEXIST;
+		return ERR_HMANOTEXIST;
 
-	if (MinHMASize < bytes)
+	if (minHMASize < bytes)
 		return ERR_HMAMINSIZE;
 
 	fHMAInUse = 1;
@@ -99,7 +99,7 @@ int XMM_ReleaseHMA(REGS *regs)
 static char fCanChangeA20 = 0;
 static int EnableCount = 0;
 
-int (*a20Handler)(int enable);
+static int (*a20Handler)(int enable) = NULL;
 
 int XMM_LocalEnableA20(REGS *regs)
 {
@@ -109,6 +109,19 @@ int XMM_LocalEnableA20(REGS *regs)
 int XMM_LocalDisableA20(REGS *regs)
 {
 	return ERR_A20;
+}
+
+/** IsA20On => compare two different memory location if a20 is on,
+otherwise the address on bus is the same! */
+int XMM_IsA20On(REGS *regs)
+{
+	void far *lowmem = MK_FP(0x0000, 0x0080);
+	void far *highmem = MK_FP(0xFFFF, 0x0090);
+	if (_fmemcmp(lowmem, highmem, 8) == 0)
+		regs->x.ax = 1;
+	else
+		regs->x.ax = 0;
+	return ERR_NOERROR;
 }
 
 static char fGlobalEnable = 0;
@@ -162,6 +175,134 @@ struct ExtMemMove
 	union SegOff	DestOffset;
 };
 
+/** AmountOfMemory */
+static long AmountOfMemory = 0;
+static long SizeOfLargestFreeBlock = 0;
+static long AmountOfUsedMemory = 0;
+
+int XMM_QueryExtMemory(REGS *regs)
+{
+	int r = ERR_OUTOFMEMORY;
+
+	regs->x.ax = (int) SizeOfLargestFreeBlock / 1024;
+	regs->x.dx = (int) (AmountOfMemory - AmountOfUsedMemory) / 1024;
+
+	r = ERR_NOERROR;
+	return r;
+}
+
+#define XMM_TAG 0x01020304
+
+struct XMM_HANDLE
+{
+	unsigned long TAG;	// XMM TAG
+	unsigned long addr; // LINEAR ADDRESS on 32bit
+	unsigned long size; // size in bytes
+	unsigned long pad;	// padding
+};
+
+int XMM_AllocExtMemory(REGS *regs, size_t size)
+{
+	long mem_available = AmountOfMemory - AmountOfUsedMemory;
+	long mem_required = size * 1024;
+
+	if (mem_available < mem_required) {
+		return ERR_OUTOFMEMORY;
+	}
+
+	unsigned segp;
+	if (_dos_allocmem(1, &segp) != 0) { // cannot allocate handle!
+		return ERR_OUTOFMEMORY;
+	}
+
+	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(segp, 0);
+
+	handle->TAG = XMM_TAG;
+	handle->addr = 0;
+	handle->size = mem_required;
+	handle->pad = 0;
+
+	regs->x.ax = 1;
+	regs->x.dx = segp;
+
+	return ERR_NOERROR;
+
+}
+
+int XMM_FreeExtMemory(REGS *regs, unsigned argdx)
+{
+	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+
+	if (handle->TAG != XMM_TAG) {
+		return ERR_INVALIDHANDLE;
+	}
+
+	// mark as free memory...
+	_dos_freemem(argdx);	// deallocate memory...
+
+	return ERR_NOERROR;
+}
+
+/** this operation require a switch in 32bit! */
+int XMM_MoveExtMemory(REGS *regs, struct ExtMemMove *far emb)
+{
+	return ERR_INVALIDHANDLE;
+}
+
+int XMM_LockExtMemory(REGS *regs, unsigned argdx)
+{
+	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+
+	if (handle->TAG != XMM_TAG) {
+		return ERR_INVALIDHANDLE;
+	}
+
+	return ERR_NOERROR;
+}
+
+int XMM_UnlockExtMemory(REGS *regs, unsigned argdx)
+{
+	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+
+	if (handle->TAG != XMM_TAG) {
+		return ERR_INVALIDHANDLE;
+	}
+
+	return ERR_NOERROR;
+}
+
+int XMM_GetExtMemoryInfo(REGS *regs, unsigned argdx)
+{
+	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+
+	if (handle->TAG != XMM_TAG) {
+		return ERR_INVALIDHANDLE;
+	}
+
+	regs->x.ax = 1;
+	regs->h.bh = 0;
+	regs->h.bl = 0;
+	regs->x.dx = 0;
+
+	return ERR_NOERROR;
+}
+
+int XMM_ReallocExtMemory(REGS *regs, unsigned argdx)
+{
+	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+
+	if (handle->TAG != XMM_TAG) {
+		return ERR_INVALIDHANDLE;
+	}
+
+	regs->x.ax = 1;
+	regs->h.bh = 0;
+	regs->h.bl = 0;
+	regs->x.dx = 0;
+
+	return ERR_NOERROR;
+}
+
 /** Entry point of XMM Control called by software */
 void XMM_DISPATCH(int Arg1, int Arg2, void far *arg)
 {
@@ -173,26 +314,37 @@ void XMM_DISPATCH(int Arg1, int Arg2, void far *arg)
 
 	switch(FunctionId) {
 		case 0:	/* Version */
-			XMM_Version(&regs);
-			break;
+			XMM_Version(&regs); break;
 		case 1: /* RequestHMA */
-			err = XMM_RequestHMA(&regs, Arg2);
-			break;
+			err = XMM_RequestHMA(&regs, Arg2); break;
 		case 2:
-			err = XMM_ReleaseHMA(&regs);
+			err = XMM_ReleaseHMA(&regs); break;
 		case 3:
+			err = XMM_GlobalEnableA20(&regs); break;
 		case 4:
+			err = XMM_GlobalDisableA20(&regs); break;
 		case 5:
+			err = XMM_LocalEnableA20(&regs); break;
 		case 6:
+			err = XMM_LocalDisableA20(&regs); break;
 		case 7:
+			err = XMM_IsA20On(&regs); break;
 		case 8:
+			err = XMM_QueryExtMemory(&regs); break;
 		case 9:
+			err = XMM_AllocExtMemory(&regs, Arg2); break;
 		case 10:
+			err = XMM_FreeExtMemory(&regs, Arg2); break;
 		case 11:
+			err = XMM_MoveExtMemory(&regs, (struct ExtMemMove *far ) arg); break;
 		case 12:
+			err = XMM_LockExtMemory(&regs, Arg2); break;
 		case 13:
+			err = XMM_UnlockExtMemory(&regs, Arg2); break;
 		case 14:
+			err = XMM_GetExtMemoryInfo(&regs, Arg2); break;
 		case 15:
+			err = XMM_ReallocExtMemory(&regs, Arg2); break;
 		default:
 			err = ERR_NOTIMPLEMENTED;
 			break;
@@ -201,8 +353,10 @@ void XMM_DISPATCH(int Arg1, int Arg2, void far *arg)
 	if (err == ERR_NOERROR) {
 		_AX = regs.x.ax;
 		_DX = regs.x.dx;
+		_BX = regs.x.bx;
 	} else {
 		_AX = regs.x.ax;
+		_BH = 0;
 		_BL = err;
 	}
 }
