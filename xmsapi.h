@@ -1,7 +1,16 @@
 #ifndef __XMSAPI_H_
 #define __XMSAPI_H_
 
-typedef void* HANDLE;
+#define XMM_TAG 0x01020304
+
+typedef struct _xms_handle
+{
+	unsigned long TAG;	// XMM TAG
+	unsigned long addr; // LINEAR ADDRESS on 32bit
+	unsigned long size; // size in bytes
+	unsigned int Flags;
+	unsigned int LockCount;
+} far* HANDLE;
 
 extern int xms_errno;   // latest XMS error
 

@@ -191,16 +191,6 @@ int XMM_QueryExtMemory(REGS *regs)
 	return r;
 }
 
-#define XMM_TAG 0x01020304
-
-struct XMM_HANDLE
-{
-	unsigned long TAG;	// XMM TAG
-	unsigned long addr; // LINEAR ADDRESS on 32bit
-	unsigned long size; // size in bytes
-	unsigned long pad;	// padding
-};
-
 int XMM_AllocExtMemory(REGS *regs, size_t size)
 {
 	long mem_available = AmountOfMemory - AmountOfUsedMemory;
@@ -215,12 +205,10 @@ int XMM_AllocExtMemory(REGS *regs, size_t size)
 		return ERR_OUTOFMEMORY;
 	}
 
-	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(segp, 0);
+	HANDLE handle = (HANDLE)(MK_FP(segp, 0));
+	_fmemset(handle, 0, sizeof(HANDLE));
 
 	handle->TAG = XMM_TAG;
-	handle->addr = 0;
-	handle->size = mem_required;
-	handle->pad = 0;
 
 	regs->x.ax = 1;
 	regs->x.dx = segp;
@@ -231,7 +219,7 @@ int XMM_AllocExtMemory(REGS *regs, size_t size)
 
 int XMM_FreeExtMemory(REGS *regs, unsigned argdx)
 {
-	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+	HANDLE handle = (HANDLE) MK_FP(argdx, 0);
 
 	if (handle->TAG != XMM_TAG) {
 		return ERR_INVALIDHANDLE;
@@ -251,7 +239,7 @@ int XMM_MoveExtMemory(REGS *regs, struct ExtMemMove *far emb)
 
 int XMM_LockExtMemory(REGS *regs, unsigned argdx)
 {
-	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+	HANDLE handle = (HANDLE) MK_FP(argdx, 0);
 
 	if (handle->TAG != XMM_TAG) {
 		return ERR_INVALIDHANDLE;
@@ -262,7 +250,7 @@ int XMM_LockExtMemory(REGS *regs, unsigned argdx)
 
 int XMM_UnlockExtMemory(REGS *regs, unsigned argdx)
 {
-	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+	HANDLE handle = (HANDLE) MK_FP(argdx, 0);
 
 	if (handle->TAG != XMM_TAG) {
 		return ERR_INVALIDHANDLE;
@@ -273,7 +261,7 @@ int XMM_UnlockExtMemory(REGS *regs, unsigned argdx)
 
 int XMM_GetExtMemoryInfo(REGS *regs, unsigned argdx)
 {
-	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+	HANDLE handle = (HANDLE) MK_FP(argdx, 0);
 
 	if (handle->TAG != XMM_TAG) {
 		return ERR_INVALIDHANDLE;
@@ -289,7 +277,7 @@ int XMM_GetExtMemoryInfo(REGS *regs, unsigned argdx)
 
 int XMM_ReallocExtMemory(REGS *regs, unsigned argdx)
 {
-	struct XMM_HANDLE far *handle = (struct XMM_HANDLE far *) MK_FP(argdx, 0);
+	HANDLE handle = (HANDLE) MK_FP(argdx, 0);
 
 	if (handle->TAG != XMM_TAG) {
 		return ERR_INVALIDHANDLE;
